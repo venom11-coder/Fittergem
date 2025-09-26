@@ -35,3 +35,36 @@ Google Calendar integration: Automatically schedules workouts, diet reminders, a
 Comprehensive onboarding: User-friendly flow for image input, health data sync, dietary preferences, and calendar access.
 
 Structured JSON outputs: AI generates plans in a structured format for easy parsing and future scalability.
+
+
+<img width="267" height="517" alt="meal_review" src="https://github.com/user-attachments/assets/b343b010-1657-416a-9c71-993b7f6458eb" />
+
+
+
+Tech Stack
+
+Frontend: Flutter
+
+Backend: Python, Flask, FastAPI
+
+AI/ML: OpenAI GPT-4o, structured prompts, image verification
+
+Database: PostgreSQL via SQLAlchemy
+
+APIs & Integrations: Google Fit, Apple Health, Google Calendar
+
+
+
+<img width="252" height="531" alt="ss_2" src="https://github.com/user-attachments/assets/ba3382ed-e6f7-4cb4-998e-fcda22aa59a1" />
+
+
+
+Key Achievements:
+
+Built a full-stack AI-powered application from scratch.
+
+Implemented real-time health data sync from wearable APIs.
+
+Developed a robust AI meal verification pipeline with fallback for user input.
+
+Designed scalable, structured JSON prompts for consistent AI outputs.
