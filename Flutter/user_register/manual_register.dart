@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'login_page.dart';
 import 'dart:convert';
-import 'package:login_project/User_Info/user_data.dart';
+import 'package:Fittergem/User_Info/user_data.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:math';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -15,18 +17,151 @@ class SignupPage extends StatefulWidget {
   @override
   State<SignupPage> createState() => _SignupPageState();
 }
-// if user clicks manual register
+
 class _SignupPageState extends State<SignupPage> {
+  final Random random = Random();
   final bool _obscurePassword = true;
+  final TextEditingController _firstnameController =TextEditingController();
+  final TextEditingController _lastnameController =TextEditingController();
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    // Show privacy policy after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showPasswordPolicy();
+    });
+  }
 
   Future<void> saveUserId(String userId) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('user_id', userId);
   }
 
-  Future<void> loginWithGoogle() async {
+  Future<void> saveemail(String email) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('email', email);
+  }
+  Future<String?> getemail() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('email');
+  }
+
+  // saves the firstname to frontend memory
+  Future<void> saveFirstName(String firstName) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('firstName', firstName);
+  }
+  Future<String?> getFirstName() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('firstName');
+  }
+  Future<void> saveLastName(String lastName) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('lastName', lastName);
+  }
+
+  Future<String?> getLastName() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('lastName');
+  }
+
+  Future<String?> getStoredUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('user_id');
+  }
+
+  Future<void> _showPasswordPolicy() async {
+    bool accepted = false;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false, // Must accept or decline
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.black,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        contentPadding: const EdgeInsets.all(20),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                "Password Policy & Disclaimer",
+                style: GoogleFonts.bebasNeue(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                "Fittergem values your privacy. You are solely responsible for creating, maintaining, and protecting your account credentials (including passwords)."
+                    "You agree to choose strong passwords and to keep them confidential. We recommend using a password that is at least"
+                    " 12 characters long and includes a mix of uppercase and lowercase letters, numbers, and symbols. If you suspect your password has been compromised, "
+                    "you must change it immediately and notify us through the support channels. We will assist within the limits of our operational capabilities.\n\n"
+                ,
+                style: GoogleFonts.poppins(
+                  color: Colors.white70,
+                  fontSize: 14,
+                ),
+                textAlign: TextAlign.left,
+              ),
+              const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      Navigator.pop(context); // Decline -> go back
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: const Text(
+                          "You need to accept the policy to continue.",
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        backgroundColor: Colors.black,
+                        duration: const Duration(seconds: 3),
+                      ));
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.redAccent,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text("Decline", style: TextStyle(color: Colors.black),),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      accepted = true;
+                      Navigator.of(context).pop();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.greenAccent,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text("Accept", style: TextStyle(color: Colors.black),),
+                  ),
+                ],
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+
+    // Optionally, you can store this acceptance in SharedPreferences to not show again
+    if (accepted) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool("policy_accepted", true);
+    }
+  }
+
+
+Future<void> loginWithGoogle() async {
     try {
       final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
       if (googleUser == null) {
@@ -55,6 +190,7 @@ class _SignupPageState extends State<SignupPage> {
       UserData.fullname = fullname;
       UserData.email = email;
       if (user != null) {
+        saveUserId(user.uid.toString());
         UserData.userId = user.uid;
       }
 
@@ -63,12 +199,19 @@ class _SignupPageState extends State<SignupPage> {
 
       // split the fullname to get first name for image input
       List<String> names = fullname?.split(' ') ?? [];
+
       String firstName = names.isNotEmpty ? names.first : "";
       String lastName = names.length > 1 ? names.sublist(1).join(" ") : "";
+      saveFirstName(firstName);
+      saveLastName(lastName);
+      if(email != null)
+        saveemail(email);
 
       if (user != null) {
+        final prefs = await SharedPreferences.getInstance();
         print(UserData.redirect);
         saveUserId(user.uid.toString());
+        UserData.userId= prefs.getString('user_id')!;
         print("✅ Logged in as ${user.email}");
         Navigator.pushNamed(context, '/image_input', arguments: {
           'userID': user.uid.toString(),
@@ -89,7 +232,7 @@ class _SignupPageState extends State<SignupPage> {
 
 // optional: if you're using an organization tenant
       provider.setCustomParameters({
-        "tenant": ""
+        "tenant": "b630a16c-d92b-4b29-a6ef-fdbc200c2f37"
       });
 
       final userCredential = await FirebaseAuth.instance.signInWithProvider(
@@ -98,13 +241,21 @@ class _SignupPageState extends State<SignupPage> {
 // optional: get user info
       final user = userCredential.user;
       print("✅ Microsoft login: ${user?.email} | UID: ${user?.uid}");
+      String? email = user?.email;
+      if(email != null){
+        saveemail(email);
+      }
 
       final user_microsoft = userCredential.user;
       final userId = user?.uid ?? "";
       final fullName = user?.displayName ?? "";
+      final parts = fullName.trim().split(' ');
       final firstName = fullName
           .split(' ')
           .first;
+      final lastName = parts.length > 1 ? parts.last : "";
+      saveFirstName(firstName);
+      saveLastName(lastName);
 
       UserData.fullname = fullName;
       UserData.email = user?.email;
@@ -112,9 +263,11 @@ class _SignupPageState extends State<SignupPage> {
         print("✅ Microsoft login successful: ${user?.email}");
 
         if (user != null) {
+          saveUserId(user.uid.toString());
           UserData.userId = user.uid;
-          saveUserId(user.uid);// ✅ no ?
         }
+        if(email != null)
+          saveemail(email);
 
         Navigator.pushNamed(context, '/image_input', arguments: {
           'userID': user?.uid,
@@ -128,6 +281,7 @@ class _SignupPageState extends State<SignupPage> {
       );
     }
   }
+
 
 
   @override
@@ -147,16 +301,15 @@ class _SignupPageState extends State<SignupPage> {
                 Column(
                   children: <Widget>[
                     Padding(
-                      padding: const EdgeInsets.all(0.0),
-                   child:  Align(
-                      alignment: Alignment.topLeft,
+                      padding: const EdgeInsets.only(top: 20,right:240),
+
                       child: IconButton(
-                        icon: const Icon(Icons.arrow_back, color: Colors.purple),
+                        icon: const Icon(Icons.arrow_back, color: Colors.purple, size: 65,),
                         onPressed: () {
                           Navigator.pop(context); // Go back to previous screen
                         },
                       ),
-                    ),
+
                     ),
 
                     const SizedBox(height: 60.0),
@@ -194,8 +347,22 @@ class _SignupPageState extends State<SignupPage> {
                     const SizedBox(height: 20),
 
                     TextField(
+                      controller: _firstnameController,
                       decoration: InputDecoration(
-                          hintText: "Email",
+                          hintText: "First Name",
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(18),
+                              borderSide: BorderSide.none),
+                          fillColor: Colors.purple.withOpacity(0.1),
+                          filled: true,
+                          prefixIcon: const Icon(Icons.email)),
+                    ),
+
+                    const SizedBox(height: 20),
+                    TextField(
+                      controller: _lastnameController,
+                      decoration: InputDecoration(
+                          hintText: "Last Name",
                           border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(18),
                               borderSide: BorderSide.none),
@@ -226,13 +393,20 @@ class _SignupPageState extends State<SignupPage> {
 
                   ],
                 ),
+                const SizedBox(height: 20),
                 Container(
                     padding: const EdgeInsets.only(top: 3, left: 3),
 
                     child: ElevatedButton(
                       onPressed: () async {
+
+                        final firstname = _firstnameController.text.trim();
+                        final lastname = _lastnameController.text.trim();
                         final username = _usernameController.text.trim();
                         final password = _passwordController.text.trim();
+
+
+
 
                         if (username.isEmpty || password.isEmpty) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -241,8 +415,13 @@ class _SignupPageState extends State<SignupPage> {
                           return;
                         }
 
+
+                        saveFirstName(firstname);
+                        saveLastName(lastname);
+
+                        saveemail(username);
                         final response = await http.post(
-                          Uri.parse("https://<BACKEND-URL>/register"),
+                          Uri.parse("https://userauthenticationlogin-production.up.railway.app/register"),
                           headers: {"Content-Type": "application/json"},
                           body: jsonEncode({
                             "username": username,
@@ -254,10 +433,20 @@ class _SignupPageState extends State<SignupPage> {
                         if (response.statusCode == 200) {
                           final jsonData = jsonDecode(response.body);
                           final userId = jsonData['user_id'].toString();
+                          saveUserId(userId);
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(content: Text("User registered! Please login.")),
                           );
-                          Navigator.pushNamed(context, '/image_input', arguments: userId);
+                          Navigator.pushNamed(context, '/image_input', arguments: {
+                            'userID': userId.toString(),
+                            'firstname': firstname.toString()
+                          });
+
+                        }
+                        else if(response.statusCode == 409) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Username already exists")),
+                        );
 
                         } else {
                           final error = jsonDecode(response.body);
@@ -279,98 +468,7 @@ class _SignupPageState extends State<SignupPage> {
                     )
                 ),
 
-                const Center(child: Text("Or")),
 
-                Container(
-                  height: 45,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(25),
-                    border: Border.all(
-                      color: Colors.purple,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.white.withOpacity(0.5),
-                        spreadRadius: 1,
-                        blurRadius: 1,
-                        offset: const Offset(0, 1), // changes position of shadow
-                      ),
-                    ],
-                  ),
-                  child: TextButton(
-                    onPressed: loginWithGoogle,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          height: 35.0,
-                          width: 30.0,
-                          decoration: const BoxDecoration(
-
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-
-                        const SizedBox(width: 18),
-
-                        const Text("Sign Up with Google",
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.purple,
-                          ),
-                        ),
-
-
-                      ],
-                    ),
-                  ),
-                ),
-                Container(
-                  height: 45,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(25),
-                    border: Border.all(
-                      color: Colors.purple,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.white.withOpacity(0.5),
-                        spreadRadius: 1,
-                        blurRadius: 1,
-                        offset: const Offset(0, 1), // changes position of shadow
-                      ),
-                    ],
-                  ),
-                  child: TextButton(
-                    onPressed: loginWithMicrosoft,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          height: 35.0,
-                          width: 30.0,
-                          decoration: const BoxDecoration(
-
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-
-                        const SizedBox(width: 18),
-
-                        const Text("Sign Up with Microsoft",
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.purple,
-                          ),
-                        ),
-
-
-                      ],
-                    ),
-                  ),
-                ),
 
 
                 Row(
