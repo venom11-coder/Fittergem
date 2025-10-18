@@ -97,8 +97,8 @@ def image_processing():
  image_converted = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
  # PROCESSES THE CONVERTED IMAGE(RGB)
- with mp.solutions.pose.Pose(static_image_mode=True, model_complexity=1, enable_segmentation=False, min_detection_confidence=0.5 , min_tracking_confidence=0.5,) as pose:
-  result = pose.process(image_converted) 
+ 
+ result = pose.process(image_converted) 
  # change it to request image AGAIN!!
  if image is None:
   return jsonify(status="error", reason= "Could not load the image!", retry= "yes") 
@@ -118,21 +118,34 @@ def image_processing():
  if Brightness < 50 or Brightness> 200:
   return jsonify (status="note" ,reason= "The image is either too bright or less bright!", retry="optional")
 
+ 
  # for calculation of angle to see if user is bend or not
  A= landmarks[shoulder_Left]
  B= landmarks[Hip_Left]
  C= landmarks[knee_Left]
+
 
  # Y-Axis measurement of landmarks
  NOSE_Y= landmarks[NOSE].y 
  ANKLE_LEFT_Y= landmarks[ANKLE_LEFT].y
  SHOULDER_LEFT_Y= landmarks[SHOULDER_LEFT].y
 
+ hip_vis = (landmarks[Hip_Left].visibility + landmarks[hip_right_pixels].visibility) / 2
+ shoulder_vis = (landmarks[shoulder_Left].visibility + landmarks[shoulder_Right].visibility) / 2
+
+ #for debugging only
+ print("hip visibility", hip_vis)
+ print("shoulder visibilty", shoulder_vis)
+
  BODY_RATIO= (ANKLE_LEFT_Y-NOSE_Y)/ (SHOULDER_LEFT_Y-NOSE_Y)
 
  #for debugging only
  #return jsonify(BODY_RATIO)
 
+# helps to detect face selfies as hip visibility will be very less
+ if hip_vis < 0.3 and shoulder_vis > 0.5:
+  return jsonify(status="error", reason="please upload full body image!", retry="yes")
+ 
  if BODY_RATIO > 9.1:
   return jsonify(status="warning" ,reason=" The image seems to be a little too close!", retry="optional")
 
@@ -213,6 +226,7 @@ def image_processing():
   
   if abs(shoulder_Left_Y - shoulder_Right_Y) > 0.05:
    return jsonify (status="error", reason="you seem to have a little bend position. This could lead to inaccurate results!", retry="yes")
+
   
   return jsonify(status="success", reason="Image satisfies all the requirements")
  
