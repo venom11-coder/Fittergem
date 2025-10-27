@@ -193,6 +193,10 @@ class AllPlans(BaseModel):
     diet_plan: DietPlanList
     cheat_meal_plan: CheatMealPlanList
 
+class WorkoutDietPlanOnly(BaseModel):
+    workout_plan: WorkoutPlanList
+    diet_plan: DietPlanList
+
 # for updating cheat meal plan
 class CheatMealPlanUpdate(BaseModel):
     status: Literal["cheat_meal_plan_update"]
@@ -209,17 +213,6 @@ class CalendarEventAdd(BaseModel):
 class CalendarEventAddList(BaseModel):
     events: List[CalendarEventAdd]
 
-# for removing events from the calendar
-class CalendarEventRemove(BaseModel):
-    summary: str
-    event: str
-    time_start: str
-    time_end: str
-    timeZone: str
-
-# for removing events from the calendar list
-class CalendarEventRemoveList(BaseModel):   
-    events: List[CalendarEventRemove]
 
 @app.post("/storing-feedback")
 async def storing_feedback(request: Request):
@@ -567,10 +560,13 @@ async def user_diet_plan(request: Request):
         if user_exist:
             diet_plan = user_exist.diet_plan
             if diet_plan:
+                  # Debugging line
                 return JSONResponse({"status": "success", "diet_plan": diet_plan})
             else:
+                 # Debugging line
                 return JSONResponse({"status": "not_found", "message": "diet plan not found"})
         else:
+            print("User not found:", user_id)  # Debugging line
             return JSONResponse({"status": "not_found", "message": "user not found"})
     
     except Exception as e:
@@ -609,11 +605,20 @@ async def user_cheat_meal_plan(request: Request):
         session.close()
 
 # removes all the information of the user
-@app.post("/sign-out")
+@app.post("/")
 async def sign_out(request: Request):
     session = SessionLocal()
     data = await request.json()
     user_id = data["user_id"]
+
+    # remvoves all the chats of the user from the chat table
+    try:
+        user_chat = session.query(Chat).filter_by(user_id=user_id).all()
+        for chat in user_chat:
+            session.delete(chat)
+        session.commit()
+    finally:
+        session.close()
     
     try:
         # checks if user exists or not
@@ -712,7 +717,7 @@ async def user_cheat_meal_plan_store(request:Request):
 
 # make this function a class instead which stores all these variables based on the user_id which is passed
 async def get_all_user_info_string( user_id: str, session) -> str:
-    print("Retrieving all user info for user_id:", user_id)
+   
 
     user_id = str(user_id)  # Ensure user_id is a string
     try:
@@ -727,36 +732,37 @@ async def get_all_user_info_string( user_id: str, session) -> str:
        user_gender = user_exist.gender
        user_age = user_exist.age
        user_full_name = user_exist.full_name
-       print("User info retrieved successfully for FinalUserInfo:", user_id)
+       plans_generation_time = user_exist.timestamp
+       
 
        #retrieves all the user info from Diseases table
        user_diseases = user_exist.diseases
-       print("User info retrieved successfully for diseases:", user_id)
+       
 
        # retrieves all the user info from HealthData table
        user_health_info = user_exist.health_info
-       print("User info retrieved successfully for health data:", user_id)
+       
 
        # retrieves all the user info from LocationData table
        user_timezone = user_exist.timezone
        user_nearby_restraurants = user_exist.restaurants
-       print("User info retrieved successfully for location data:", user_id)
+       
         
       # retrieves all the user info from CalendarData table
        user_events = user_exist.events_calendar
-       print("User info retrieved successfully for calendar data:", user_id)
+       
 
       # retrieves all the user info from DietPreferencesData table
        user_favorite_cuisines = user_exist.favorite_cuisines
        user_other_restrictions = user_exist.other_restrictions
        user_diet_percentage = user_exist.diet_percentage
-       print("User info retrieved successfully for diet preferences data:", user_id)
+       
 
      # retrieves all the user info from WorkoutPlan, DietPlan and CheatMealPlan table
        user_workout_plan = user_exist.workout_plan
        user_diet_plan = user_exist.diet_plan
        user_cheat_meal_plan = user_exist.cheat_meal_plan
-       print("User info retrieved successfully for workout, diet and cheat meal plans:", user_id)
+      
 
         # creates a dictionary to store all the user info
         #returns the user info in string format
@@ -769,22 +775,121 @@ async def get_all_user_info_string( user_id: str, session) -> str:
      "diseases": user_diseases if user_diseases else "None",
      "health_info": user_health_info,
      "timezone": user_timezone if user_timezone else "Not provided",
-     "nearby_restaurants": user_nearby_restraurants,
-     "events_calendar": user_events if user_events else "None",
+     "nearby_restaurants": user_nearby_restraurants if user_nearby_restraurants else "The user did not give access to their Location, if they ask questions regarding nearby restaurants or cheat meals, inform them that they have not given access to their location",
+     "events_calendar": user_events if user_events else " The user did not give access to their calendar. If they ask you to adjust calendar events, inform them that they have not connected their calendar",
      "favorite_cuisines": user_favorite_cuisines,
      "other_restrictions": user_other_restrictions if user_other_restrictions else "None",
      "diet_percentage": user_diet_percentage,
      "workout_plan": user_workout_plan if user_workout_plan else "None or not yet made",
      "diet_plan": user_diet_plan if user_diet_plan else "None or not yet made",
-     "cheat_meal_plan": user_cheat_meal_plan if user_cheat_meal_plan else "None",
+     "cheat_meal_plan": user_cheat_meal_plan if user_cheat_meal_plan else "None, since the user did not give access to their location",
+     "workout, diet and cheat plans generate at this time in UTC": plans_generation_time if user_workout_plan else "None",
       }
 
      user_info_json = json.dumps(user_info, indent=4)
-     print("User info string created successfully for user_id:", user_id)
+     
      return user_info_json
     except Exception as e:
-        print("Error retrieving user info:", str(e))
+    
         return f"Error retrieving user info: {str(e)}"
+
+#generates workout and diet plan only using structured output
+@app.post("/user-workout-diet-generate")
+async def user_workout_diet_generate(request: Request):
+     session = SessionLocal()
+     data = await request.json()
+     user_id = data["user_id"]
+     user_info = await get_all_user_info_string(user_id, session)
+
+    # backend mapping for tutorial links
+     EXERCISE_TUTORIALS = {
+    "Push Ups": "https://www.youtube.com/watch?v=IODxDxX7oi4",
+    "Squats": "https://www.youtube.com/watch?v=aclHkVaku9U",
+    "Lunges": "https://www.youtube.com/watch?v=xqvCmoLULNY",
+    "Planks": "https://www.youtube.com/watch?v=pSHjTRCQxIw",
+    "Burpees": "https://www.youtube.com/watch?v=TU8QYVW0gDU",
+    "Mountain Climbers": "https://www.youtube.com/watch?v=nmwgirgXLYM",
+    "Jumping Jacks": "https://www.youtube.com/watch?v=c4DAnQ6DtF8",
+    "High Knees": "https://www.youtube.com/watch?v=OAJ_J3EZkdY",
+    "Tricep Dips": "https://www.youtube.com/watch?v=89_spgcdQlw",
+    "Glute Bridges": "https://www.youtube.com/watch?v=Xp33YgPZgns",
+    "Bicycle Crunches": "https://www.youtube.com/watch?v=9FGilxCbdz8",
+    "Leg Raises": "https://www.youtube.com/watch?v=JB2oyawG9KI",
+    "Superman": "https://www.youtube.com/watch?v=cc6UVRS7PW4",
+    }
+
+
+     message = (
+        f"Generate a 14-day workout plan, diet plan, and cheat meal plan for the user based on the following information  and be quick:\n\n"
+        f"{user_info}\n"
+        )
+     try:
+        client = OpenAI(api_key=api_key)
+
+        response = client.beta.chat.completions.parse(
+            model="gpt-4o-2024-08-06",
+            messages=[
+                {"role": "system", "content": "You are Leo, a highly trained fitness expert. Analyse the user information provided deeply and generate a 14-day workout plan and diet plan. The plans should be highly user-friendly and only recommend home workouts. You can recommend at most 5 exercises per day for the workout plan. The only exercises you can recommend are push ups, squats, lunges, planks, burpees, mountain climbers, jumping jacks, high knees, tricep dips  glute bridges, bicycle crunches, leg raises and superman.\n"
+                "for diet, consider the user's favorite cuisines, other restrictions, and diet percentage. The plans should be highly user-friendly and tailored to the user's preferences."
+                "strictly follow the format provided for each plan.\n"
+                "do not take too much time to generate the plans, be quick, accurate and efficient.\n"},
+                 {"role": "user", "content": message}
+
+            ],
+            response_format=WorkoutDietPlanOnly,  # structured output
+        )
+     
+        # Parse the response
+        all_plans = response.choices[0].message.parsed  # type: AllPlans
+
+        for day_plan in all_plans.workout_plan.plan:
+            # Add tutorial links to each exercise
+            if day_plan.exercise_1_name in EXERCISE_TUTORIALS:
+                day_plan.tutorial_exercise_1 = EXERCISE_TUTORIALS[day_plan.exercise_1_name]
+            if day_plan.exercise_2_name in EXERCISE_TUTORIALS:
+                day_plan.tutorial_exercise_2 = EXERCISE_TUTORIALS[day_plan.exercise_2_name]
+            if day_plan.exercise_3_name and day_plan.exercise_3_name in EXERCISE_TUTORIALS:
+                day_plan.tutorial_exercise_3 = EXERCISE_TUTORIALS[day_plan.exercise_3_name]
+            if day_plan.exercise_4_name and day_plan.exercise_4_name in EXERCISE_TUTORIALS:
+                day_plan.tutorial_exercise_4 = EXERCISE_TUTORIALS[day_plan.exercise_4_name]
+            if day_plan.exercise_5_name and day_plan.exercise_5_name in EXERCISE_TUTORIALS:
+                day_plan.tutorial_exercise_5 = EXERCISE_TUTORIALS[day_plan.exercise_5_name]
+
+       
+
+        workout_plan_json = all_plans.workout_plan.model_dump_json()
+        diet_plan_json = all_plans.diet_plan.model_dump_json()
+        
+      
+
+        # stores the workout plan in db
+        user_exist = session.query(FinalUserInfo).filter_by(user_id=user_id).first()
+        if user_exist:
+            user_exist.workout_plan = workout_plan_json
+            user_exist.diet_plan = diet_plan_json
+            
+        else:
+            new_user = FinalUserInfo(
+                user_id=user_id,
+                workout_plan=workout_plan_json,
+                diet_plan=diet_plan_json,
+                
+            )
+            session.add(new_user)
+        session.commit()
+        return JSONResponse({
+            "status": "success",
+            "status": "success",
+            "workout_plan": all_plans.workout_plan.model_dump(),
+            "diet_plan": all_plans.diet_plan.model_dump(),
+        })
+     except Exception as e:
+        session.rollback()
+    
+        return JSONResponse({"status": "error", "message": str(e)})
+    
+     finally:
+        session.close()
 
     
 
@@ -824,7 +929,7 @@ async def user_all_plans_generate(request: Request):
         response = client.beta.chat.completions.parse(
             model="gpt-4o-2024-08-06",
             messages=[
-                {"role": "system", "content": "You are Leo, a highlt trained fitness expert. Analyse the user information provided deeply and generate a 14-day workout plan, diet plan, and cheat meal plan. The plans should be highly user-friendly and only recommend home workouts. You can recommend at most 5 exercises per day for the workout plan. The only exercises you can recommend are push ups, squats, lunges, planks, burpees, mountain climbers, jumping jacks, high knees, tricep dips  glute bridges, bicycle crunches, leg raises and superman.\n"
+                {"role": "system", "content": "You are Leo, a highly trained fitness expert. Analyse the user information provided deeply and generate a 14-day workout plan, diet plan, and cheat meal plan. The plans should be highly user-friendly and only recommend home workouts. You can recommend at most 5 exercises per day for the workout plan. The only exercises you can recommend are push ups, squats, lunges, planks, burpees, mountain climbers, jumping jacks, high knees, tricep dips  glute bridges, bicycle crunches, leg raises and superman.\n"
                 "for diet and cheat meal plans, consider the user's favorite cuisines, other restrictions, and diet percentage. The plans should be highly user-friendly and tailored to the user's preferences."
                 " same for cheat meal plan, consider the user's favorite cuisines and other restrictions. The cheat meal plan should include recommended restaurants and meals. It should also be with respect to the user fitness level.\n"
                 "strictly follow the format provided for each plan.\n"
@@ -834,7 +939,7 @@ async def user_all_plans_generate(request: Request):
             ],
             response_format=AllPlans,  # structured output
         )
-        print("information sent to the AI")
+       
         # Parse the response
         all_plans = response.choices[0].message.parsed  # type: AllPlans
 
@@ -851,12 +956,12 @@ async def user_all_plans_generate(request: Request):
             if day_plan.exercise_5_name and day_plan.exercise_5_name in EXERCISE_TUTORIALS:
                 day_plan.tutorial_exercise_5 = EXERCISE_TUTORIALS[day_plan.exercise_5_name]
 
-        print("tutorial links added to the workout plan exercises")
+       
 
         workout_plan_json = all_plans.workout_plan.model_dump_json()
         diet_plan_json = all_plans.diet_plan.model_dump_json()
         cheat_meal_plan_json = all_plans.cheat_meal_plan.model_dump_json()
-        print("plans generated successfully")
+      
 
         # stores the workout plan in db
         user_exist = session.query(FinalUserInfo).filter_by(user_id=user_id).first()
@@ -873,7 +978,7 @@ async def user_all_plans_generate(request: Request):
             )
             session.add(new_user)
         session.commit()
-        print("all plans stored in db")
+       
         return JSONResponse({
             "status": "success",
             "status": "success",
@@ -883,7 +988,7 @@ async def user_all_plans_generate(request: Request):
         })
     except Exception as e:
         session.rollback()
-        print("Error generating all plans:", str(e))
+     
         return JSONResponse({"status": "error", "message": str(e)})
     
     finally:
@@ -948,7 +1053,7 @@ async def user_workout_plan_generate(request: Request):
             if day_plan.exercise_5_name and day_plan.exercise_5_name in EXERCISE_TUTORIALS:
                 day_plan.tutorial_exercise_5 = EXERCISE_TUTORIALS[day_plan.exercise_5_name]
 
-        print("tutorial links added to the workout plan exercises")
+      
         workout_plan_json = workout_plan_obj.model_dump_json()
 
         # Save to database (same as before)
@@ -1066,14 +1171,14 @@ async def chat(request: Request):
     data = await request.json()
     user_id = data["user_id"]
     message = data["message"]
+    current_time = data["datetime"]
+    timezone = data["timezone"]
+    # adding current date and time with every message
+   
+    message = f"datetime: [{current_time} and timezone: {timezone}]  {message}"
+    
     user_info = await get_all_user_info_string(user_id, session)
 
-    if message == "__end_chat__":
-        try:
-            print("Ending chat for user:")
-        finally:
-            session.close()
-        return JSONResponse({"status": "chat_ended", "message": "Chat ended successfully."})
 
     # Fetch last 6 chats
     n = 6
@@ -1083,10 +1188,17 @@ async def chat(request: Request):
     messages = []
     messages.append({
         "role": "system",
-        "content": "You are Leo, a highly-trained fitness expert. Friendly, encouraging, and thorough. "
-                   "You can update workout, cheat, diet plans, and handle Google Calendar.For updating the workout, cheat, or diet plans, use the respective functions and just return the JSON output of only those specific days you want to update. "
+        "content": "You are Leo, a highly-trained fitness expert of Fittergem. Friendly, encouraging, and thorough. You can only speak about fitness, workouts, diet, cheat meals, and calendar events. Or fitness in general. About body, health, and nutrition. Any other topic is out of bounds and you should politely refuse to answer. "
+                   "You can update workout, cheat, diet plans, and add events to Google Calendar.If the user asks to remove events then just politely refuse it saying privacy concerns and do not call any tool. If the user is asking confidential information make sure to refuse it politely. For updating the workout, cheat, or diet plans, use the respective functions and just return the JSON output of only those specific days you want to update. Again behave like an expert coach, do not just make adjustments which are unrealistic, you can suggest better ones or politely tell no if they are unrealistic and will mess up his workout and diet."
+                   "for cheat meal plan, you can update the entire plan at once and return the whole JSON file as described. "
+                   "you are returning very long messages, so make sure to be concise and to the point and not big. "
                    "if the user is asking to update the entire plan or to make a lot of changes, then return the entire plan in JSON format. Otherwise try to update for only specific days"
                    "Always confirm changes with the user before updating. "
+                   "Always tell the user the specific details when you update any plan. Do not return any json file but just tell the user the day and the changes made"
+                   " you are provided the timezone and current time in every chat so make sure you use it and if user asks back then you can tell them"
+                   "do not return the youtube links to the user as well, just use them for your reference. "
+                   "do not return any json file to the user, not at all. Even after any adjustments"
+                   "Also consider the time the user's plans were generated and also the time message was sent and so you should know what day of diet or workout plan is and if it is past day 14 then ask to generate a new workout plan first and generate it and then ask for diet plan and if yes then do it as well"
                    "Only use JSON when triggering a tool; otherwise, speak conversationally." + user_info
     })
 
@@ -1096,11 +1208,11 @@ async def chat(request: Request):
             messages.append({"role": "assistant", "content": chat.output_text})
 
     messages.append({"role": "user", "content": message})
-    print("Current message added to the messages")
+
 
     client = OpenAI(api_key=api_key)
 
-    response = client.chat.completions.create(
+    response =  client.chat.completions.create(
         model="gpt-4o-2024-08-06",
         messages=messages,
         tools=[
@@ -1108,7 +1220,6 @@ async def chat(request: Request):
             openai.pydantic_function_tool(CheatMealPlanUpdate),
             openai.pydantic_function_tool(DietPlanUpdate),
             openai.pydantic_function_tool(CalendarEventAddList),
-            openai.pydantic_function_tool(CalendarEventRemoveList)
         ],
         tool_choice="auto"
     )
@@ -1117,11 +1228,10 @@ async def chat(request: Request):
     tool_calls = getattr(choice, "tool_calls", None)
 
     if tool_calls:
-        print("Function call detected:", tool_calls)
+    
         tool_call = tool_calls[0]  # only one tool at a time
         tool_name = tool_call.function.name
         tool_args = json.loads(tool_call.function.arguments)
-        print("Tool name:", tool_name, "Args:", tool_args)
 
         # Store an interim GPT message for updating
         interim_message = f"Updating your {tool_name.replace('Update','').replace('CalendarEvent','calendar event').lower()}..."
@@ -1156,18 +1266,16 @@ async def chat(request: Request):
                         user_plan.workout_plan = json.dumps(merged_plan)
                     else:
                         user_plan.workout_plan = update_json
+                    
+                        # update the cheat meal plan
+                        # without any loop or nothing just update the whole plan with the new plan
                 elif tool_name == "CheatMealPlanUpdate":
-                    cheal_meal_plan=user_plan.cheat_meal_plan
-                    if cheal_meal_plan:
-                        cheat_meal_plan_data = json.loads(cheal_meal_plan)
-                        update_data = json.loads(update_json)
-                        day_map = {day["day"]: day for day in cheat_meal_plan_data["plan"]}
-                        for updated_day in update_data["plan"]:
-                            day_map[updated_day["day"]] = updated_day
-                        merged_plan = {"plan": list(day_map.values())}
-                        user_plan.cheat_meal_plan = json.dumps(merged_plan)
-                    else:
-                        user_plan.cheat_meal_plan = update_json
+                    # updates the whole cheat meal plan at once
+                      user_plan.cheat_meal_plan = update_json
+                     
+                    
+                        
+                    
                 elif tool_name == "DietPlanUpdate":
                     diet_plan=user_plan.diet_plan
                     if diet_plan:
@@ -1180,6 +1288,7 @@ async def chat(request: Request):
                         user_plan.diet_plan = json.dumps(merged_plan)
                     else:
                         user_plan.diet_plan = update_json
+                    
             else:
                 new_user = FinalUserInfo(
                     user_id=user_id,
@@ -1191,10 +1300,10 @@ async def chat(request: Request):
             session.commit()
             #we need to start the endpoint again to get the new info and last 6 messages to not run out of tokens
             
-            print(f"{tool_name} updated successfully for user {user_id}")
+          
             status = tool_name.replace("Update","").lower() + "_updated"
 
-        elif tool_name in ["CalendarEventAddList", "CalendarEventRemoveList"]:
+        elif tool_name in ["CalendarEventAddList"]:
             calendar_events = [ 
                 {
                     "summary": e["summary"],
@@ -1205,10 +1314,10 @@ async def chat(request: Request):
                 } 
                 for e in tool_args["events"]
             ]
-            endpoint = "Calendar-update" if tool_name=="CalendarEventAddList" else "Calendar-delete"
+            endpoint = "Calendar-update"
             async with httpx.AsyncClient() as client:
-                response = await client.post(f"https://<BACKEND-URL>/{endpoint}", json={"events": calendar_events})
-            status = "events_added" if tool_name=="CalendarEventAddList" else "events_removed"
+                response = await client.post(f"https://web-production-f7f35.up.railway.app/{endpoint}?user_id={user_id}", json={"events": calendar_events})
+            status = "events_added"
             if response.status_code != 200:
                 return JSONResponse({
                     "status": "error",
@@ -1219,22 +1328,37 @@ async def chat(request: Request):
         session.commit()
 
         # --- Ask GPT to generate a realistic confirmation ---
-        messages.append({"role": "system", "content": "The last action has been successfully completed. Now generate a friendly, natural confirmation message to the user."})
-        followup_response = client.chat.completions.create(
+        if tool_name in ["WorkoutPlanUpdate", "CheatMealPlanUpdate", "DietPlanUpdate"]:
+         
+         messages.append({"role": "system", "content": "The last action has been successfully completed. Now generate a friendly, natural confirmation message to the user."})
+         followup_response = client.chat.completions.create(
             model="gpt-4o-2024-08-06",
             messages=messages
-        )
-        gpt_message = followup_response.choices[0].message.content
-        if not gpt_message or gpt_message.strip() == "":
+         )
+         gpt_message = followup_response.choices[0].message.content
+         if not gpt_message or gpt_message.strip() == "":
             gpt_message = f"Your {status.replace('_',' ')} has been updated successfully!"
+
+        else:
+            gpt_message = "Your Google Calendar events have been successfully updated! ✅"
+
+
 
         session.add(Chat(user_id=user_id, input_text=message, output_text=gpt_message))
         session.commit()
 
+        if tool_name == "WorkoutPlanUpdate":
+            status = "workout_plan_updated"
+        elif tool_name == "CheatMealPlanUpdate":
+            status = "cheat_meal_plan_updated"
+        elif tool_name == "DietPlanUpdate":
+            status = "diet_plan_updated"
+        elif tool_name == "CalendarEventAddList":
+            status = "events_added"
+
         return JSONResponse({
-            "status": "plan_updated",
+            "status": status,
             "message": gpt_message,
-            "update_status": status
         })
 
     else:
@@ -1266,14 +1390,14 @@ async def image_verify(request: Request):
     user_id = data["user_id"]
     encoded_image = data["image"]
     datetime = data["datetime"]
-    print("Received image verification request for user:", user_id)
+    
 
     if not encoded_image or not datetime or not user_id:
         return JSONResponse({"status": "error", "message": "Not all required info provided"})
 
     client = OpenAI(api_key=api_key)
     try:
-        print("Sending image to OpenAI for verification")
+        
 
         response = client.chat.completions.create(
             model="gpt-4o",
@@ -1304,7 +1428,7 @@ async def image_verify(request: Request):
 
         choice = response.choices[0].message
         tool_call = getattr(choice, "tool_calls", None)
-        print("Tool call received:", tool_call)
+       
 
         if tool_call:
             tool_call = tool_call[0]
@@ -1330,5 +1454,5 @@ async def image_verify(request: Request):
                     return JSONResponse({"status": "done", "full_prompt": message})
 
     except Exception as e:
-        print("Error during image verification:", str(e))
+    
         return JSONResponse({"status": "error", "message": str(e)})
